@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVV VSE — Stock Trainer Final</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<!-- Axios -->
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+<style>
+  body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:0;transition:background .2s,color .2s}
+  .card{background:white;padding:14px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.06);margin-bottom:14px;}
+  .dark .card{background:#0b1220;color:#e6eef8}
+  input,select,textarea{outline:none}
+  .search-result{padding:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-radius:6px}
+  .search-result:hover{background:#eef2ff}
+  .dark .search-result:hover{background:#23303f}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border:1px solid #e8eef8;text-align:center}
+  .dark th,.dark td{border-color:#223041}
+  #tv_chart_container{width:100%;height:420px;margin-top:10px;}
+  .small{font-size:.85rem;color:#6b7280}
+</style>
+
+</head>
+<body class="light">
+
+<!-- LOGIN -->
+<div id="login-screen" class="p-6 max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold mb-4">SVV VSE — Stock Trainer</h1>
+
+  <div id="common-card" class="card">
+    <label>Enter common password</label>
+    <input id="commonPassword" type="password" placeholder="Common password" class="w-full border rounded p-2 mt-1" />
+    <button onclick="checkCommon()" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded">Next</button>
+  </div>
+
+  <div id="auth-card" class="card hidden">
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <h2 class="font-semibold mb-2">Create account</h2>
+        <input id="signupName" placeholder="Full name" class="w-full border rounded p-2 mb-2" />
+        <input id="signupEmail" placeholder="Email" class="w-full border rounded p-2 mb-2" />
+        <input id="signupPass" type="password" placeholder="Password" class="w-full border rounded p-2 mb-2" />
+        <button onclick="signup()" class="bg-green-600 text-white px-4 py-2 rounded">Sign Up</button>
+      </div>
+      <div>
+        <h2 class="font-semibold mb-2">Login</h2>
+        <input id="loginEmail" placeholder="Email" class="w-full border rounded p-2 mb-2" />
+        <input id="loginPass" type="password" placeholder="Password" class="w-full border rounded p-2 mb-2" />
+        <button onclick="login()" class="bg-blue-600 text-white px-4 py-2 rounded">Login</button>
+        <button onclick="adminQuick()" class="bg-yellow-500 text-black px-4 py-2 rounded mt-2">Admin Quick</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden min-h-screen">
+
+  <!-- NAV -->
+  <header class="flex items-center justify-between p-4 bg-blue-800 text-white">
+    <div class="flex items-center gap-4">
+      <div class="font-bold text-lg">SVV VSE</div>
+      <nav class="hidden md:flex gap-2">
+        <button onclick="showTab('stocks')" class="px-3 py-1 bg-blue-600 rounded">Stocks</button>
+        <button onclick="showTab('holdings')" class="px-3 py-1 bg-blue-600 rounded">Holdings</button>
+        <button onclick="showTab('orders')" class="px-3 py-1 bg-blue-600 rounded">Orders</button>
+        <button onclick="showTab('watchlist')" class="px-3 py-1 bg-blue-600 rounded">Watchlist</button>
+        <button onclick="showTab('admin')" class="px-3 py-1 bg-blue-600 rounded">Admin</button>
+      </nav>
+    </div>
+    <div class="flex items-center gap-4">
+      <div>Balance: ₹ <span id="uiBalance">0</span></div>
+      <div id="uiUser" class="small"></div>
+      <button onclick="toggleTheme()" class="px-3 py-1 rounded bg-gray-200 text-black">Theme</button>
+      <button onclick="logout()" class="px-3 py-1 rounded bg-red-600">Logout</button>
+    </div>
+  </header>
+
+  <main class="p-6 max-w-6xl mx-auto">
+
+    <!-- STOCKS TAB -->
+    <section id="tab-stocks" class="tab">
+      <div class="card">
+        <input id="searchInput" placeholder="Type NSE symbol or name" class="w-full border rounded p-2 mb-2" oninput="onSearch()" />
+        <div id="searchResults" class="mt-2 max-h-56 overflow-y-auto border rounded p-1"></div>
+        <div id="selectedInfo" class="p-3 border rounded mt-2">No selection</div>
+        <div class="mt-2 flex gap-2">
+          <input id="qtyInput" type="number" placeholder="Qty" class="border rounded p-2 w-28" />
+          <button onclick="buyAction()" class="bg-green-600 text-white px-3 py-2 rounded">Buy</button>
+          <button onclick="sellAction()" class="bg-red-600 text-white px-3 py-2 rounded">Sell All</button>
+        </div>
+        <div class="small mt-2">Last Price: <span id="lastPrice">—</span></div>
+
+        <!-- TradingView Widget -->
+        <div id="tv_chart_container"></div>
+      </div>
+    </section>
+
+    <!-- HOLDINGS TAB -->
+    <section id="tab-holdings" class="tab hidden">
+      <div class="card">
+        <h3 class="font-semibold mb-3">Holdings</h3>
+        <table class="w-full"><thead><tr><th>Stock</th><th>Qty</th><th>Avg Price</th><th>Current</th><th>Value</th><th>P/L</th></tr></thead>
+          <tbody id="holdingsBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ORDERS TAB -->
+    <section id="tab-orders" class="tab hidden">
+      <div class="card">
+        <h3 class="font-semibold mb-3">Orders</h3>
+        <table class="w-full"><thead><tr><th>Date</th><th>Stock</th><th>Qty</th><th>Price</th><th>Type</th></tr></thead>
+          <tbody id="ordersBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- WATCHLIST TAB -->
+    <section id="tab-watchlist" class="tab hidden">
+      <div class="card">
+        <h3 class="font-semibold mb-3">Watchlist</h3>
+        <ul id="watchlistBody" class="space-y-2"></ul>
+      </div>
+    </section>
+
+    <!-- ADMIN TAB -->
+    <section id="tab-admin" class="tab hidden">
+      <div class="card">
+        <h3 class="font-semibold mb-3">Admin Panel</h3>
+        <table class="w-full"><thead><tr><th>Name</th><th>Email</th><th>Balance</th><th>Portfolio</th><th>Orders</th></tr></thead>
+          <tbody id="adminBody"></tbody></table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<script>
+/* --------------------------- CONFIG --------------------------- */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC8nRb_Rw4zdj5M0B91J5wwkK43QWFes9w",
+  authDomain: "svvweb-b9d76.firebaseapp.com",
+  projectId: "svvweb-b9d76",
+  storageBucket: "svvweb-b9d76.appspot.com",
+  messagingSenderId: "218077523369",
+  appId: "1:218077523369:web:a4848d4b6a4171a21ba8b8"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const COMMON_PASSWORD = "vse2k25";
+const ADMIN_EMAIL = "admin6@vse.com";
+const ADMIN_PASS = "adminvse2k25";
+const TD_KEY = "c933f15065e54a7b9d8908b084d72de1";
+
+let currentUser = null;
+let selectedSymbol = null;
+let symbols = [];
+
+/* --------------------------- UTILS --------------------------- */
+const $ = id=>document.getElementById(id);
+const show = el=>el.classList.remove('hidden');
+const hide = el=>el.classList.add('hidden');
+const showTab = name=>{
+  document.querySelectorAll('.tab').forEach(t=>t.classList.add('hidden'));
+  $('tab-'+name).classList.remove('hidden');
+};
+
+/* --------------------------- COMMON PASS --------------------------- */
+function checkCommon(){
+  const v = $('commonPassword').value.trim();
+  if(v===COMMON_PASSWORD){ hide($('common-card')); show($('auth-card')); }
+  else alert('Incorrect common password');
+}
+
+/* --------------------------- AUTH --------------------------- */
+async function signup(){
+  const name=$('signupName').value.trim();
+  const email=$('signupEmail').value.trim();
+  const pass=$('signupPass').value;
+  if(!name||!email||!pass)return alert('Fill fields');
+  try{
+    const res=await auth.createUserWithEmailAndPassword(email,pass);
+    currentUser=res.user;
+    await db.collection('users').doc(currentUser.uid).set({
+      name,email,balance:50000,portfolio:{},orders:[],watchlist:[]
+    });
+    afterAuth();
+  }catch(e){alert(e.message);}
+}
+async function login(){
+  const email=$('loginEmail').value.trim();
+  const pass=$('loginPass').value;
+  if(!email||!pass)return alert('Fill fields');
+  try{
+    const res=await auth.signInWithEmailAndPassword(email,pass);
+    currentUser=res.user;
+    afterAuth();
+  }catch(e){alert(e.message);}
+}
+function adminQuick(){
+  currentUser={uid:'admin',email:ADMIN_EMAIL,displayName:'Admin'};
+  afterAuth();
+}
+
+/* --------------------------- AFTER AUTH --------------------------- */
+async function afterAuth(){
+  hide($('login-screen')); show($('app'));
+  $('uiUser').innerText=currentUser.email||'Admin';
+  await loadSymbolList();
+  showTab('stocks');
+  startLiveUpdates();
+}
+
+/* --------------------------- LOAD SYMBOLS --------------------------- */
+async function loadSymbolList(){
+  try{
+    const res=await axios.get(`https://api.twelvedata.com/symbol_search?exchange=XNSE&apikey=${TD_KEY}`);
+    if(res.data && Array.isArray(res.data.data)){
+      symbols=res.data.data.map(s=>({symbol:(s.symbol||'').toUpperCase(),name:s.name||''}));
+    }
+  }catch(e){console.error(e);}
+}
+
+/* --------------------------- SEARCH --------------------------- */
+function onSearch(){
+  const q=($('searchInput').value||'').trim().toUpperCase();
+  const out=$('searchResults'); out.innerHTML='';
+  if(!q)return;
+  const matches=symbols.filter(s=>s.symbol.includes(q)||s.name.toUpperCase().includes(q)).slice(0,50);
+  for(const m of matches){
+    const div=document.createElement('div');
+    div.className='search-result';
+    div.innerText=`${m.symbol} - ${m.name}`;
+    div.onclick=()=>selectSymbol(m.symbol);
+    out.appendChild(div);
+  }
+}
+function selectSymbol(sym){
+  selectedSymbol=sym+'.NSE'; // for TradingView
+  $('selectedInfo').innerText=`Selected: ${sym}`;
+  updateTradingViewWidget();
+  fetchPrice(sym);
+}
+
+/* --------------------------- TRADINGVIEW --------------------------- */
+let tvWidget=null;
+function updateTradingViewWidget(){
+  if(!selectedSymbol)return;
+  if(tvWidget)tvWidget.remove();
+  new TradingView.widget({
+    container_id: "tv_chart_container",
+    width: "100%",
+    height: 420,
+    symbol: selectedSymbol,
+    interval: "1",
+    timezone: "Asia/Kolkata",
+    theme: document.body.classList.contains('dark')?'dark':'light',
+    style: "1",
+    locale: "en",
+    toolbar_bg: "#f1f3f6",
+    enable_publishing: false,
+    allow_symbol_change: true,
+    save_image: false,
+    hideideas: true
+  });
+}
+
+/* --------------------------- FETCH PRICE --------------------------- */
+async function fetchPrice(sym){
+  try{
+    const res=await axios.get(`https://api.twelvedata.com/price?symbol=${sym}&apikey=${TD_KEY}`);
+    if(res.data.price){ $('lastPrice').innerText=res.data.price; }
+  }catch(e){console.error(e);}
+}
+
+/* --------------------------- BUY / SELL --------------------------- */
+async function buyAction(){
+  if(!selectedSymbol)return alert('Select stock');
+  const qty=parseInt($('qtyInput').value); if(!qty)return alert('Enter qty');
+  const price=parseFloat($('lastPrice').innerText);
+  if(!price)return alert('Price unavailable');
+
+  const userRef=currentUser.uid==='admin'?null:db.collection('users').doc(currentUser.uid);
+  if(currentUser.uid!=='admin'){
+    const doc=await userRef.get();
+    let data=doc.data();
+    if(data.balance<price*qty)return alert('Insufficient balance');
+
+    data.balance-=price*qty;
+    if(!data.portfolio[selectedSymbol])data.portfolio[selectedSymbol]={qty:0,avg:0};
+    let p=data.portfolio[selectedSymbol];
+    p.avg=(p.avg*p.qty + price*qty)/(p.qty+qty);
+    p.qty+=qty;
+    data.orders.push({date:new Date().toLocaleString(),symbol:selectedSymbol,qty,price,type:'BUY'});
+    await userRef.set(data);
+    $('uiBalance').innerText=data.balance.toFixed(2);
+  }
+  alert(`Bought ${qty} of ${selectedSymbol} at ₹${price}`);
+}
+
+async function sellAction(){
+  if(!selectedSymbol)return alert('Select stock');
+  const userRef=currentUser.uid==='admin'?null:db.collection('users').doc(currentUser.uid);
+  if(currentUser.uid!=='admin'){
+    const doc=await userRef.get();
+    let data=doc.data();
+    if(!data.portfolio[selectedSymbol]||data.portfolio[selectedSymbol].qty<=0)return alert('No shares to sell');
+    const qty=data.portfolio[selectedSymbol].qty;
+    const price=parseFloat($('lastPrice').innerText);
+    data.balance+=price*qty;
+    data.orders.push({date:new Date().toLocaleString(),symbol:selectedSymbol,qty,price,type:'SELL'});
+    data.portfolio[selectedSymbol].qty=0;
+    await userRef.set(data);
+    $('uiBalance').innerText=data.balance.toFixed(2);
+  }
+  alert(`Sold all ${selectedSymbol}`);
+}
+
+/* --------------------------- LOAD USER DATA --------------------------- */
+async function startLiveUpdates(){
+  if(currentUser.uid==='admin'){
+    $('uiBalance').innerText='—';
+    return;
+  }
+  const userRef=db.collection('users').doc(currentUser.uid);
+  setInterval(async()=>{
+    const doc=await userRef.get();
+    const data=doc.data();
+    $('uiBalance').innerText=data.balance.toFixed(2);
+
+    // Holdings
+    const tbody=$('holdingsBody'); tbody.innerHTML='';
+    for(const sym in data.portfolio){
+      const p=data.portfolio[sym];
+      if(p.qty>0){
+        const current=parseFloat($('lastPrice').innerText)||p.avg;
+        const row=document.createElement('tr');
+        row.innerHTML=`<td>${sym}</td><td>${p.qty}</td><td>${p.avg}</td><td>${current}</td><td>${(current*p.qty).toFixed(2)}</td><td>${((current-p.avg)*p.qty).toFixed(2)}</td>`;
+        tbody.appendChild(row);
+      }
+    }
+
+    // Orders
+    const obody=$('ordersBody'); obody.innerHTML='';
+    for(const o of data.orders.reverse()){
+      const row=document.createElement('tr');
+      row.innerHTML=`<td>${o.date}</td><td>${o.symbol}</td><td>${o.qty}</td><td>${o.price}</td><td>${o.type}</td>`;
+      obody.appendChild(row);
+    }
+
+    // Watchlist
+    const wlist=$('watchlistBody'); wlist.innerHTML='';
+    data.watchlist.forEach(s=>{ const li=document.createElement('li'); li.innerText=s; wlist.appendChild(li); });
+  },2000);
+}
+
+/* --------------------------- LOGOUT --------------------------- */
+function logout(){auth.signOut(); location.reload();}
+
+/* --------------------------- THEME --------------------------- */
+function toggleTheme(){
+  document.body.classList.toggle('dark');
+  updateTradingViewWidget();
+}
+</script>
+</body>
+</html>
